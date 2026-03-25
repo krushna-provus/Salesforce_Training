@@ -20,48 +20,60 @@
  * See the Apex Language Reference for more information about Testing and Code Coverage.
  */
 @isTest
-private class ProductServiceTest {
+private with sharing class ProductServiceTest {
 
     @isTest
-    static void testCreateProduct() {
+    static void testCreatePricebookEntries() {
 
-        //Arrange
-        Pricebook2 customPb = new Pricebook2(Name = 'Test Custom PB' , IsActive = true);
-        insert customPb;
+        Id standardPricebookId = Test.getStandardPricebookId();
 
-        Id stdPbId = Test.getStandardPricebookId();
-
-        List<Product2> products = new List<Product2>();
-        Product2 prod1 = new Product2(
-            Name = 'Test Product 1',
-            IsActive = true,
-            List_Price__c = 100.00
-        );
-        products.add(prod1);
-
-        Product2 prod2 = new Product2(
-            Name = 'Test Product 2',
-            IsActive = true,
-            List_Price__c = 200.00,
-            Targeted_Price_Book__c = customPb.Id
-        );
-        products.add(prod2);
-
-        Product2 prod3  = new Product2(
-            Name = 'Test Product 3',
+        Pricebook2 customPricebook = new Pricebook2(
+            Name = 'Test Custom PB',
             IsActive = true
         );
-        products.add(prod3);
+        insert customPricebook;
 
-        //Act
+        List<Product2> products = new List<Product2>{
+            new Product2(
+                Name = 'Test Product 1',
+                IsActive = true,
+                List_Price__c = 100
+            ),
+            new Product2(
+                Name = 'Test Product 2',
+                IsActive = true,
+                List_Price__c = 200,
+                Targeted_Price_Book__c = customPricebook.Id
+            ),
+            new Product2(
+                Name = 'Test Product 3',
+                IsActive = true
+            )
+        };
+
         Test.startTest();
-        insert products;
+        Database.SaveResult[] results = Database.insert(products, false, AccessLevel.USER_MODE);
         Test.stopTest();
 
+        for (Database.SaveResult sr : results) {
+            System.assert(sr.isSuccess());
+        }
 
-        //Assert
-        List<PricebookEntry> pbes = [SELECT Id, Pricebook2Id, Product2Id FROM PricebookEntry];
+        List<PricebookEntry> entries = [
+            SELECT Id, Product2Id, Pricebook2Id
+            FROM PricebookEntry
+        ];
 
-        System.Assert.areEqual(3, pbes.size(), 'Should have created 3 Pricebook Entries.');
+        Assert.areEqual(3, entries.size());
+
+        Boolean hasStandardEntry = false;
+
+        for (PricebookEntry pbe : entries) {
+            if (pbe.Pricebook2Id == standardPricebookId) {
+                hasStandardEntry = true;
+            }
+        }
+
+        Assert.areEqual(true,hasStandardEntry);
     }
 }

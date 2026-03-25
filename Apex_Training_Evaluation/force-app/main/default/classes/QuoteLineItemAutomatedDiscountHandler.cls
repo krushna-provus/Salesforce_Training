@@ -3,27 +3,25 @@ public with sharing class QuoteLineItemAutomatedDiscountHandler {
     //Handler 1
     public static void discountBasedOnProductCategory(List<QuoteLineItem> lineItems) {
         
-        Set<Id> pbeIds = new Set<Id>();
+        Set<Id> priceBookEntries = new Set<Id>();
         for(QuoteLineItem item : lineItems) {
             if(item.Auto_Apply_Discount__c == true && item.Discount == null && item.PricebookEntryId != null) {
-                pbeIds.add(item.PricebookEntryId);
+                priceBookEntries.add(item.PricebookEntryId);
             }
         }
         
-        if(pbeIds.isEmpty()) return;
+        if(priceBookEntries.isEmpty()) return;
         
-        Map<Id, Decimal> pbeToDiscountMap = new Map<Id, Decimal>();
-        for (PricebookEntry pbe : [SELECT Id, Product2.Product_Category__r.Default_Discount__c 
-                                   FROM PricebookEntry 
-                                   WHERE Id IN :pbeIds]) {
+        Map<Id, Decimal> pricebookEntriesToDiscountMap = new Map<Id, Decimal>();
+        for (PricebookEntry pbe : QuoteLineItemDao.getPriceBookEntriesBasedOnIds(priceBookEntries)) {
             if (pbe.Product2.Product_Category__r != null) {
-                pbeToDiscountMap.put(pbe.Id, pbe.Product2.Product_Category__r.Default_Discount__c);
+                pricebookEntriesToDiscountMap.put(pbe.Id, pbe.Product2.Product_Category__r.Default_Discount__c);
             }
         } 
         
         for (QuoteLineItem qli : lineItems) {
-            if (pbeToDiscountMap.containsKey(qli.PricebookEntryId)) {
-                qli.Discount = pbeToDiscountMap.get(qli.PricebookEntryId);
+            if (pricebookEntriesToDiscountMap.containsKey(qli.PricebookEntryId)) {
+                qli.Discount = pricebookEntriesToDiscountMap.get(qli.PricebookEntryId);
             }
         }
     }
@@ -43,8 +41,7 @@ public with sharing class QuoteLineItemAutomatedDiscountHandler {
         if(priceBookEntryids.isEmpty()) return;
         
         Map<Id, List<Decimal>> productToDiscounts = new Map<Id, List<Decimal>>();
-        for(PriceBookEntry pbe : [SELECT Id, Product2.Product_Category__r.Threshold_Discount__c, Product2.Product_Category__r.Max_Allowable_Discount__c 
-                                  FROM PriceBookEntry WHERE Id IN :priceBookEntryids]) {
+        for(PriceBookEntry pbe : QuoteLineItemDao.getPriceBookEntriesBasedOnIds(priceBookEntryids)) {
             if(pbe.Product2.Product_Category__r != null) {
                 productToDiscounts.put(pbe.Id, new List<Decimal>{
                     pbe.Product2.Product_Category__r.Threshold_Discount__c, 

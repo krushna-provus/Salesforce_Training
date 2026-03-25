@@ -20,46 +20,67 @@
  * See the Apex Language Reference for more information about Testing and Code Coverage.
  */
 @isTest
-private class QuoteApprovalHandlerTest {
+class QuoteApprovalHandlerTest {
 
-    @isTest
-    static void testSubmitToApprovalProcess() {
-
-        User currentUser = [SELECT Id FROM User WHERE Id = :UserInfo.getUserId()];
-        User otherUser = [SELECT Id FROM User WHERE Id != :currentUser.Id AND IsActive = true LIMIT 1];
-        currentUser.ManagerId = otherUser.Id;
-        update currentUser;
-        // 1. Setup Data: Account -> Opportunity -> Quote
-        Account acc = new Account(Name = 'Test Account', AccountNumber = '98712356');
+    @testSetup
+    static void setupData() {
+        Account acc = new Account(Name = 'Test Account',AccountNumber = '12309874');
         insert acc;
 
         Opportunity opp = new Opportunity(
-            Name = 'Test Opp',
+            Name = 'Test Opportunity',
             StageName = 'Prospecting',
-            CloseDate = Date.today().addDays(10),
+            CloseDate = Date.today(),
             AccountId = acc.Id
         );
         insert opp;
 
-        Quote testQuote = new Quote(
+        Quote q = new Quote(
             Name = 'Test Quote',
             OpportunityId = opp.Id,
-            // Ensure any fields that are entry criteria for 'Manager_Approval' are set here
-            Is_Approval_Required__c = true 
+            Pricebook2Id = Test.getStandardPricebookId(),
+            Status = 'Draft',
+            Is_Approval_Required__c = false
         );
-        insert testQuote;
+        insert q;
+    }
 
-        // 2. ACT: Call the handler method
+    @isTest
+    static void testTriggerApprovalFlow() {
+        Quote q = [SELECT Id, Is_Approval_Required__c FROM Quote LIMIT 1];
+
+        q.Is_Approval_Required__c = true;
+
         Test.startTest();
-        QuoteApprovalHandler.SubmitToApprovalProccess(new List<Quote>{testQuote});
+        Database.SaveResult[] results = Database.update(new List<Quote>{q}, false);
         Test.stopTest();
 
-        // 3. ASSERT: Check if an Approval Process Instance was created for this Quote
-        List<ProcessInstance> instances = [SELECT Id, Status, TargetObjectId 
-                                           FROM ProcessInstance 
-                                           WHERE TargetObjectId = :testQuote.Id];
-        
-        System.assertEquals(1, instances.size(), 'One approval process should have been started.');
-        System.assertEquals('Pending', instances[0].Status, 'The approval status should be Pending.');
+        Assert.areEqual(true, results[0].isSuccess(), 'ERROR: Quote update failed in trigger flow');
+
+        List<ProcessInstance> instances = [
+            SELECT Id, Status
+            FROM ProcessInstance
+            WHERE TargetObjectId = :q.Id
+        ];
+
+        Assert.areEqual(1, instances.size(), 'ERROR: Approval process was not created for Quote');
+        Assert.areEqual('Pending', instances[0].Status, 'ERROR: Approval status is not Pending');
+    }
+
+    @isTest
+    static void testHandlerDirectCall() {
+        Quote q = [SELECT Id FROM Quote LIMIT 1];
+
+        Test.startTest();
+        QuoteApprovalHandler.SubmitToApprovalProccess(new List<Quote>{q});
+        Test.stopTest();
+
+        List<ProcessInstance> instances = [
+            SELECT Id
+            FROM ProcessInstance
+            WHERE TargetObjectId = :q.Id
+        ];
+
+        Assert.areEqual(1, instances.size(), 'ERROR: Handler did not submit Quote for approval');
     }
 }
